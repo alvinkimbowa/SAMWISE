@@ -77,7 +77,7 @@ def main(args):
     print('number of params:', n_parameters)
 
     if args.resume:
-        checkpoint = torch.load(args.resume, map_location='cpu')
+        checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
         if list(checkpoint['model'].keys())[0].startswith('module'):
             checkpoint['model'] = {k.replace('module.', ''): v for k, v in checkpoint['model'].items()}        
         checkpoint = on_load_checkpoint(model_without_ddp, checkpoint)

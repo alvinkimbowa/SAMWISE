@@ -446,7 +446,7 @@ def build_samwise(args):
         cfg.model.fixed_no_obj_ptr = not args.disable_pred_obj_score
         sam = instantiate(cfg.model, _recursive_=True)
 
-    state_dict = torch.load(sam2_weights, map_location="cpu")["model"]
+    state_dict = torch.load(sam2_weights, map_location="cpu", weights_only=False)["model"]
     sam.load_state_dict(state_dict, strict=False)
     sam_embed_dim = cfg.model.image_encoder.neck.backbone_channel_list[::-1][1:]
 
