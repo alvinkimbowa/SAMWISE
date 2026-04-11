@@ -158,7 +158,14 @@ def sub_processor(args, data, save_path_prefix, save_visualize_path_prefix, img_
             frames = meta[i]["frames"]
 
             video_len = len(frames)
-            all_pred_masks = []
+            save_path = os.path.join(save_path_prefix, video_name, exp_id)
+            os.makedirs(save_path, exist_ok=True)
+            expected_mask_files = [os.path.join(save_path, frame + ".png") for frame in frames]
+            if all(os.path.exists(mask_file) for mask_file in expected_mask_files):
+                continue
+            missing_frame_indices = [idx for idx, mask_file in enumerate(expected_mask_files) if not os.path.exists(mask_file)]
+            last_missing_idx = missing_frame_indices[-1]
+
             # 3. for each clip
             vd = VideoEvalDataset(join(img_folder, video_name), frames, max_size=args.max_size)
             dl = DataLoader(vd, batch_size=args.eval_clip_window,
@@ -167,6 +174,11 @@ def sub_processor(args, data, save_path_prefix, save_visualize_path_prefix, img_
             # 3. for each clip
             for imgs, clip_frames_ids in dl:
                 clip_frames_ids = clip_frames_ids.tolist()
+                clip_frames = [frames[idx] for idx in clip_frames_ids]
+                clip_mask_files = [os.path.join(save_path, frame + ".png") for frame in clip_frames]
+                if clip_frames_ids[0] > last_missing_idx:
+                    break
+
                 imgs = imgs.to(args.device)  # [eval_clip_window, 3, h, w]
                 img_h, img_w = imgs.shape[-2:]
                 size = torch.as_tensor([int(img_h), int(img_w)]).to(args.device)
@@ -179,36 +191,21 @@ def sub_processor(args, data, save_path_prefix, save_visualize_path_prefix, img_
                 pred_masks = pred_masks.unsqueeze(0)
                 pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False) 
                 pred_masks = (pred_masks.sigmoid() > args.threshold)[0].cpu() 
-                all_pred_masks.append(pred_masks)
+                for frame_name, clip_mask_file, pred_mask in zip(clip_frames, clip_mask_files, pred_masks):
+                    pred_mask = pred_mask.numpy().astype(np.float32)
+                    if not os.path.exists(clip_mask_file):
+                        mask = Image.fromarray(pred_mask * 255).convert('L')
+                        mask.save(clip_mask_file)
 
-            # store the video results
-            all_pred_masks = torch.cat(all_pred_masks, dim=0).numpy()  # (video_len, h, w)
-
-            if args.visualize:
-                for t, frame in enumerate(frames):
-                    # original
-                    img_path = os.path.join(img_folder, video_name, frame + '.jpg')
-                    source_img = Image.open(img_path).convert('RGBA') # PIL image
-
-                    # draw mask
-                    source_img = vis_add_mask(source_img, all_pred_masks[t], color_list[i%len(color_list)])
-
-                    # save
-                    save_visualize_path_dir = os.path.join(save_visualize_path_prefix, video, str(i))
-                    os.makedirs(save_visualize_path_dir, exist_ok=True)
-                    save_visualize_path = os.path.join(save_visualize_path_dir, frame + '.png')
-                    source_img.save(save_visualize_path)
-
-
-            # save binary image
-            save_path = os.path.join(save_path_prefix, video_name, exp_id)
-            os.makedirs(save_path, exist_ok=True)
-            for j in range(video_len):
-                frame_name = frames[j]
-                mask = all_pred_masks[j].astype(np.float32) 
-                mask = Image.fromarray(mask * 255).convert('L')
-                save_file = os.path.join(save_path, frame_name + ".png")
-                mask.save(save_file)
+                    if args.visualize:
+                        save_visualize_path_dir = os.path.join(save_visualize_path_prefix, video, str(i))
+                        os.makedirs(save_visualize_path_dir, exist_ok=True)
+                        save_visualize_path = os.path.join(save_visualize_path_dir, frame_name + '.png')
+                        if not os.path.exists(save_visualize_path):
+                            img_path = os.path.join(img_folder, video_name, frame_name + '.jpg')
+                            source_img = Image.open(img_path).convert('RGBA')
+                            source_img = vis_add_mask(source_img, pred_mask, color_list[i%len(color_list)])
+                            source_img.save(save_visualize_path)
         progress.update(1)
 
     result_dict["0"] = num_all_frames
