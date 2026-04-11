@@ -17,9 +17,10 @@ def hydra_init(cfg_name="config") -> None:
 
     cs = ConfigStore.instance()
     cs.store(name=f"{cfg_name}", node=FairseqConfig)
+    cfg = FairseqConfig()
 
     for k in FairseqConfig.__dataclass_fields__:
-        v = FairseqConfig.__dataclass_fields__[k].default
+        v = getattr(cfg, k)
         try:
             cs.store(name=k, node=v)
         except BaseException:
