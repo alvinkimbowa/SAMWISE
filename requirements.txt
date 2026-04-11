@@ -13,6 +13,7 @@ spacy
 hydra-core==1.3.2
 av
 bitarray
+numpy<2
 py3_wget
 sacrebleu
 scikit-learn
