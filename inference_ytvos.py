@@ -64,17 +64,22 @@ def main(args):
     meta_file = os.path.join(root, "meta_expressions", split, "meta_expressions.json")
     with open(meta_file, "r") as f:
         data = json.load(f)["videos"]
-    valid_test_videos = set(data.keys())
-    # for some reasons the competition's validation expressions dict contains both the validation (202) & 
-    # test videos (305). so we simply load the test expressions dict and use it to filter out the test videos from
-    # the validation expressions dict:
-    test_meta_file = os.path.join(root, "meta_expressions", "test", "meta_expressions.json")
-    with open(test_meta_file, 'r') as f:
-        test_data = json.load(f)['videos']
-    test_videos = set(test_data.keys())
-    valid_videos = valid_test_videos - test_videos
-    video_list = sorted([video for video in valid_videos])
-    assert len(video_list) == 202, f'error: {len(video_list)} incorrect number of validation videos'
+    video_list = sorted(data.keys())
+    if split == "valid":
+        # Ref-Youtube-VOS stores both the validation and test videos in the "valid"
+        # expressions dict. When the test video ids are a subset of the current valid
+        # keys, filter them out. For custom datasets using the same layout, keep the
+        # valid split as-is.
+        test_meta_file = os.path.join(root, "meta_expressions", "test", "meta_expressions.json")
+        if os.path.exists(test_meta_file):
+            with open(test_meta_file, 'r') as f:
+                test_data = json.load(f)['videos']
+            test_videos = set(test_data.keys())
+            valid_test_videos = set(video_list)
+            if test_videos and test_videos.issubset(valid_test_videos):
+                valid_videos = valid_test_videos - test_videos
+                if valid_videos:
+                    video_list = sorted(valid_videos)
 
     start_time = time.time()
     print('Start inference')

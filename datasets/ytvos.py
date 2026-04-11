@@ -95,7 +95,10 @@ class YTVOSDataset(Dataset):
                         meta['video'], meta['exp'], meta['obj_id'], meta['category'], meta['frames'], meta['frame_id']
             # clean up the caption
             exp = " ".join(exp.lower().split())
-            category_id = category_dict[category]
+            # Echo-VOS conversions can use anatomy category names that are not part of
+            # the original Ref-Youtube-VOS taxonomy. Ref-VOS does not predict classes,
+            # so fall back to the generic "others" category instead of failing.
+            category_id = category_dict.get(category, category_dict['others'])
             vid_len = len(frames)
 
             sample_indx = FrameSampler.sample_local_frames(frame_id, vid_len, self.num_frames)
