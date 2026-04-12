@@ -16,7 +16,7 @@ import util.misc as utils
 from util.misc import on_load_checkpoint
 import datasets.samplers as samplers
 from datasets import build_dataset
-from engine import train_one_epoch, validate_one_epoch
+from engine import train_one_epoch
 from models.samwise import build_samwise
 from os.path import join
 import sys
@@ -78,9 +78,6 @@ def main(args):
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, args.lr_drop)
 
     dataset_train = build_dataset(args.dataset_file, image_set="train", args=args)
-    dataset_val = None
-    if args.dataset_file == 'ytvos':
-        dataset_val = build_dataset(args.dataset_file, image_set="val", args=args)
 
     args.batch_size = int(args.batch_size / args.ngpu)
     if args.distributed:
@@ -92,20 +89,6 @@ def main(args):
 
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
                                    collate_fn=utils.collate_fn, num_workers=args.num_workers)
-    data_loader_val = None
-    if dataset_val is not None:
-        if args.distributed:
-            sampler_val = samplers.DistributedSampler(dataset_val, shuffle=False)
-        else:
-            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
-        data_loader_val = DataLoader(
-            dataset_val,
-            batch_size=args.batch_size,
-            sampler=sampler_val,
-            drop_last=False,
-            collate_fn=utils.collate_fn,
-            num_workers=args.num_workers,
-        )
 
     output_dir = Path(args.output_dir)
     if args.resume:
@@ -169,10 +152,25 @@ def main(args):
             'n_parameters': n_parameters_tot,
         }
 
-        if args.dataset_file == 'ytvos' and data_loader_val is not None:
-            print("Evaluate on validation split: ")
-            val_stats = validate_one_epoch(model, data_loader_val, device, epoch, args=args)
-            log_stats.update({f'val_{k}': v for k, v in val_stats.items()})
+        if args.dataset_file == 'ytvos':
+            if os.path.abspath(args.ytvos_path) == os.path.abspath('data/ref-youtube-vos'):
+                print("Evaluate on DAVIS: ")
+                from inference_davis import eval_davis
+                m = model
+                out_dir = join(args.output_dir, f'valid_epoch{str(epoch).zfill(2)}')
+                eval_davis(args, m, out_dir)
+            else:
+                print("Evaluate on Echo validation split: ")
+                from inference_echo import eval_echo
+                m = model
+                out_dir = join(args.output_dir, f'valid_epoch{str(epoch).zfill(2)}')
+                result = eval_echo(args, m, out_dir)
+                if utils.is_main_process():
+                    out_str = f'Epoch: {epoch}:\nJ: {result[0]},\t F: {result[1]},\t J&F: {result[2]}'
+                    print(out_str)
+                    log_stats.update({'val_J': result[0], 'val_F': result[1], 'val_J&F': result[2]})
+                    with (output_dir / "log.txt").open("a") as f:
+                        f.write(out_str + "\n")
         elif args.dataset_file == 'mevis':
             m = model
             print("Evaluate on MeVis: ")
