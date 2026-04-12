@@ -2,15 +2,24 @@
 #SBATCH --job-name=samwise-echo
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
 #SBATCH --output=slurm-%x-%j.out
 
+export UV_CACHE_DIR=.cache/uv
+export XDG_CACHE_HOME=.cache
+export TORCH_HOME=.cache/torch
+export PYTORCH_FAIRSEQ_CACHE=.cache/torch/pytorch_fairseq
+export HF_HOME=.cache/huggingface
+export TRANSFORMERS_OFFLINE=1
+
+export OMP_NUM_THREADS=8
+
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/home/ultrai/UltrAi/moein/SAMWISE}"
+REPO_DIR="${REPO_DIR:-$(pwd)}"
 cd "${REPO_DIR}"
 
 EXP_NAME="${EXP_NAME:-echo_refvos_train}"
@@ -18,7 +27,7 @@ DATA_ROOT="${DATA_ROOT:-data/echo-ref-vos}"
 RESUME_CKPT="${RESUME_CKPT:-pretrain/pretrained_model.pth}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-output}"
 
-GPUS_PER_NODE="${GPUS_PER_NODE:-${SLURM_GPUS_ON_NODE:-2}}"
+GPUS_PER_NODE="${GPUS_PER_NODE:-${SLURM_GPUS_ON_NODE:-4}}"
 MASTER_PORT="${MASTER_PORT:-29500}"
 
 # In this codebase, --batch_size is treated as a global batch size and then
