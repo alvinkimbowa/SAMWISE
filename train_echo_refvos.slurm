@@ -25,6 +25,7 @@ cd "${REPO_DIR}"
 EXP_NAME="${EXP_NAME:-echo_refvos_train}"
 DATA_ROOT="${DATA_ROOT:-data/echo-ref-vos}"
 RESUME_CKPT="${RESUME_CKPT:-pretrain/pretrained_model.pth}"
+RESUME_OPTIMIZER="${RESUME_OPTIMIZER:-0}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-output}"
 
 GPUS_PER_NODE="${GPUS_PER_NODE:-${SLURM_GPUS_ON_NODE:-4}}"
@@ -42,8 +43,15 @@ echo "Job ID: ${SLURM_JOB_ID:-local}"
 echo "Node list: ${SLURM_JOB_NODELIST:-local}"
 echo "GPUs per node: ${GPUS_PER_NODE}"
 echo "Experiment: ${EXP_NAME}"
+echo "Resume checkpoint: ${RESUME_CKPT}"
+echo "Resume optimizer: ${RESUME_OPTIMIZER}"
 
 nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader
+
+RESUME_ARGS=(--resume "${RESUME_CKPT}")
+if [[ "${RESUME_OPTIMIZER}" == "1" ]]; then
+  RESUME_ARGS+=(--resume_optimizer)
+fi
 
 uv run torchrun \
   --standalone \
@@ -53,7 +61,7 @@ uv run torchrun \
   main.py \
   --dataset_file ytvos \
   --ytvos_path "${DATA_ROOT}" \
-  --resume "${RESUME_CKPT}" \
+  "${RESUME_ARGS[@]}" \
   --output_dir "${OUTPUT_ROOT}" \
   --name_exp "${EXP_NAME}" \
   --epochs "${EPOCHS}" \
