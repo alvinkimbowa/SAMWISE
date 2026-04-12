@@ -80,6 +80,49 @@ def train_one_epoch(model: torch.nn.Module,
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
+
+@torch.no_grad()
+def validate_one_epoch(model: torch.nn.Module,
+                       data_loader: Iterable, device: torch.device, epoch: int,
+                       args=None):
+    model.eval()
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    header = 'Val: [{}]'.format(epoch)
+    print_freq = 50
+
+    for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
+        samples = samples.to(device)
+        captions = [t["caption"] for t in targets]
+        outputs = model(samples, captions, targets)
+
+        losses = {}
+        seg_loss = loss_masks(torch.cat(outputs["masks"]), targets, num_frames=samples.tensors.shape[1])
+        losses.update(seg_loss)
+        if args.use_cme_head and "pred_cme_logits" in outputs:
+            weight = torch.tensor([1., 2.]).to(device)
+            cme_loss = F.cross_entropy(
+                torch.cat(outputs["pred_cme_logits"]),
+                ignore_index=-1,
+                target=torch.tensor(outputs["cme_label"]).long().to(device),
+                weight=weight,
+            )
+            losses.update({"CME_loss": cme_loss if not cme_loss.isnan() else torch.tensor(0).to(device)})
+
+        loss_dict_reduced = utils.reduce_dict(losses)
+        loss_dict_reduced_unscaled = {f'{k}_unscaled': v for k, v in loss_dict_reduced.items()}
+        loss_dict_reduced_scaled = {k: v for k, v in loss_dict_reduced.items()}
+        losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
+
+        metric_logger.update(
+            loss=losses_reduced_scaled.item(),
+            **loss_dict_reduced_scaled,
+            **loss_dict_reduced_unscaled,
+        )
+
+    metric_logger.synchronize_between_processes()
+    print("Validation stats:", metric_logger)
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
 @torch.no_grad()
 def evaluate(model, postprocessors, data_loader, device, args):
     model.eval()
