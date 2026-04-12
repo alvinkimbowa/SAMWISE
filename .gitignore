@@ -19,3 +19,5 @@ demo_video
 demo_output
 video_demo
 frames_video_demo
+.cache/
+*.out
