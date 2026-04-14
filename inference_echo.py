@@ -29,6 +29,20 @@ from util.misc import on_load_checkpoint
 color_list = colormap().astype("uint8").tolist()
 
 
+def parse_skip_datasets(skip_datasets_arg):
+    if not skip_datasets_arg:
+        return set()
+    return {
+        item.strip()
+        for item in skip_datasets_arg.split(",")
+        if item.strip() and item.strip().lower() not in {"none", "null"}
+    }
+
+
+def dataset_name_from_video_id(video_id):
+    return video_id.split("__", 1)[0]
+
+
 def main(args):
     args.batch_size = 1
     print("Inference only supports for batch size = 1")
@@ -90,14 +104,20 @@ def main(args):
 
 def eval_echo(args, model, save_path_prefix):
     root = Path(args.ytvos_path)
-    split = "valid"
+    split = "valid" if args.split == "valid_u" else args.split
     img_folder = os.path.join(root, split, "JPEGImages")
     mask_folder = os.path.join(root, split, "Annotations")
-    meta_file = os.path.join(root, "meta_expressions", "valid", "meta_expressions.json")
+    meta_file = os.path.join(root, "meta_expressions", split, "meta_expressions.json")
     with open(meta_file, "r") as f:
         data = json.load(f)["videos"]
 
-    video_list = sorted(data.keys())
+    skip_datasets = parse_skip_datasets(args.skip_datasets)
+    video_list = [
+        video_id
+        for video_id in sorted(data.keys())
+        if dataset_name_from_video_id(video_id) not in skip_datasets
+    ]
+    skipped_video_count = len(data) - len(video_list)
     if args.distributed:
         rank = utils.get_rank()
         world_size = utils.get_world_size()
@@ -122,6 +142,27 @@ def eval_echo(args, model, save_path_prefix):
         for exp_id, exp_dict in expressions.items():
             exp = exp_dict["exp"]
             obj_id = int(exp_dict["obj_id"])
+            save_path = os.path.join(result_dir, video, exp_id)
+            expected_frame_paths = [os.path.join(save_path, frame_name + ".png") for frame_name in frames]
+            if expected_frame_paths and all(os.path.exists(path) for path in expected_frame_paths):
+                gt_masks = []
+                for frame_name in frames:
+                    gt_path = os.path.join(mask_folder, video, frame_name + ".png")
+                    gt_mask = np.array(Image.open(gt_path).convert("P"))
+                    gt_masks.append((gt_mask == obj_id).astype(np.uint8))
+                gt_masks = np.stack(gt_masks, axis=0)
+
+                all_pred_masks = []
+                for pred_path in expected_frame_paths:
+                    pred_mask = np.array(Image.open(pred_path).convert("L"))
+                    all_pred_masks.append((pred_mask > 0).astype(np.uint8))
+                all_pred_masks = np.stack(all_pred_masks, axis=0)
+
+                j = float(db_eval_iou(gt_masks, all_pred_masks).mean())
+                f = float(db_eval_boundary(gt_masks, all_pred_masks).mean())
+                video_results[exp_id] = {"exp": exp, "obj_id": obj_id, "J": j, "F": f}
+                continue
+
             all_pred_masks = []
 
             vd = VideoEvalDataset(join(img_folder, video), frames, max_size=args.max_size)
@@ -154,7 +195,6 @@ def eval_echo(args, model, save_path_prefix):
             f = float(db_eval_boundary(gt_masks, all_pred_masks).mean())
             video_results[exp_id] = {"exp": exp, "obj_id": obj_id, "J": j, "F": f}
 
-            save_path = os.path.join(result_dir, video, exp_id)
             os.makedirs(save_path, exist_ok=True)
             for frame_name, pred_mask in zip(frames, all_pred_masks):
                 mask = Image.fromarray(pred_mask.astype(np.float32) * 255).convert("L")
@@ -188,6 +228,9 @@ def eval_echo(args, model, save_path_prefix):
                     "J": j_score,
                     "F": f_score,
                     "J&F": jf_score,
+                    "skip_datasets": sorted(skip_datasets),
+                    "n_videos_after_dataset_filter": len(video_list),
+                    "n_videos_skipped_by_dataset_filter": skipped_video_count,
                     "videos": merged,
                 },
                 f,

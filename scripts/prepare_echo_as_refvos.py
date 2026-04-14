@@ -185,7 +185,7 @@ def ensure_empty_output(output_root: Path, overwrite: bool) -> None:
 
 
 def split_output_name(split_name: str) -> str:
-    return {"train": "train", "val": "valid", "test": "test"}[split_name]
+    return {"train": "train", "val": "valid", "test": "test", "external": "external"}[split_name]
 
 
 def make_expression_payload(*, prompt_library: Any, plane: str, dataset: str, label_id: int) -> str:
@@ -334,7 +334,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def run_validation_checks(*, output_root: Path) -> None:
-    for split_name, output_split in (("train", "train"), ("val", "valid"), ("test", "test")):
+    for split_name, output_split in (("train", "train"), ("val", "valid"), ("test", "test"), ("external", "external")):
         meta_path = output_root / output_split / "meta.json"
         expr_split = "val" if split_name == "val" else split_name
         expr_path = output_root / "meta_expressions" / expr_split / "meta_expressions.json"
@@ -399,11 +399,12 @@ def main() -> int:
         "split_json": str(split_json_path),
         "output_root": str(output_root),
         "prompt_mode": "view_structure_anatomy",
-        "ignored_splits": ["external"],
+        "ignored_splits": [],
         "split_counts": {
             "train": {"source_items": 0, "exported_videos": 0, "frames": 0, "expressions": 0},
             "val": {"source_items": 0, "exported_videos": 0, "frames": 0, "expressions": 0},
             "test": {"source_items": 0, "exported_videos": 0, "frames": 0, "expressions": 0},
+            "external": {"source_items": 0, "exported_videos": 0, "frames": 0, "expressions": 0},
         },
         "per_class_expression_counts": Counter(),
         "skipped_clips": [],
@@ -411,7 +412,7 @@ def main() -> int:
     }
 
     split_payloads: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
-    for split_name in ("train", "val", "test"):
+    for split_name in ("train", "val", "test", "external"):
         split_items = list(split_json.get(split_name, []))
         report["split_counts"][split_name]["source_items"] = len(split_items)
         split_payloads[split_name] = build_split_records(

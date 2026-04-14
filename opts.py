@@ -97,8 +97,10 @@ def get_args_parser():
     # Testing and evaluation settings
     parser.add_argument('--threshold', default=0.5, type=float,
                         help="Threshold for binary mask predictions")
-    parser.add_argument('--split', default='valid', type=str, choices=['valid', 'valid_u', 'test'],
+    parser.add_argument('--split', default='valid', type=str, choices=['valid', 'valid_u', 'test', 'external'],
                         help="Dataset split for evaluation")
+    parser.add_argument('--skip_datasets', default='EchoNet-Dynamic', type=str,
+                        help="Comma-separated Echo dataset names to skip during evaluation. Pass an empty string to skip nothing.")
     parser.add_argument('--visualize', action='store_true',
                         help="Enable mask visualization during inference")
     parser.add_argument('--eval_clip_window', default=8, type=int,
@@ -112,5 +114,3 @@ def get_args_parser():
                         help="Path to folder containing the sequences folders results")
 
     return parser
-
-
